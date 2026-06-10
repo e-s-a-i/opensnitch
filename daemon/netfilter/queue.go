@@ -202,6 +202,14 @@ func go_callback(queueID C.int, data *C.uchar, length C.int, mark C.uint, idx ui
 		return
 	}
 
+	// Defense in depth: the C caller already guards this, but go_callback is an
+	// exported symbol. A non-positive length or nil data would make the
+	// xdata[0] access below panic and crash the daemon, so fail closed (drop).
+	if data == nil || length <= 0 {
+		(*vc).verdict = C.uint(NF_DROP)
+		return
+	}
+
 	xdata := C.GoBytes(unsafe.Pointer(data), length)
 
 	p := Packet{
@@ -226,7 +234,7 @@ func go_callback(queueID C.int, data *C.uchar, length C.int, mark C.uint, idx ui
 	case *queueChannel <- p:
 		select {
 		case v := <-p.verdictChannel:
-			if v.Packet == nil {
+			if len(v.Packet) == 0 {
 				(*vc).verdict = C.uint(v.Verdict)
 			} else {
 				(*vc).verdict = C.uint(v.Verdict)

@@ -67,9 +67,21 @@ static int nf_callback(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, struct n
 
     mark = nfq_get_nfmark(nfa);
     ph   = nfq_get_msg_packet_hdr(nfa);
+    // nfq_get_msg_packet_hdr() may return NULL for malformed messages.
+    // Without a packet id we cannot issue a verdict, so abort this callback
+    // instead of dereferencing a NULL pointer (which would crash the daemon).
+    if (ph == NULL) {
+        return 0;
+    }
     id   = ntohl(ph->packet_id);
     size = nfq_get_payload(nfa, &buffer);
     idx  = (uint32_t)((uintptr_t)arg);
+
+    // nfq_get_payload() returns -1 on error. A packet we cannot read must not
+    // be parsed; fail closed by dropping it rather than letting it through.
+    if (size <= 0 || buffer == NULL) {
+        return nfq_set_verdict(qh, id, NF_DROP, 0, NULL);
+    }
 
 #ifdef NFQA_CFG_F_UID_GID
     if (get_uid)
