@@ -8,8 +8,35 @@ After=network.target
 Type=simple
 ExecStart=/usr/bin/opensnitchd
 Restart=always
-RestartSec=30
+# Fail-closed builds (QueueBypass=false) drop traffic while the daemon is
+# down, so minimise the outage window after a crash.
+RestartSec=1
 TimeoutStopSec=10
+
+# NOTE: the UI socket is created by the (unprivileged) GUI, not the daemon,
+# so it lives in the user's runtime dir (/run/user/<uid>/opensnitch). The
+# daemon connects to it as root. See HARDENING.md.
+
+# --- sandboxing -------------------------------------------------------------
+# Prevent the root daemon (and anything it execs: iptables, auditctl, ...)
+# from gaining new privileges.
+NoNewPrivileges=true
+# The IPC socket and TLS material live under root-owned dirs; keep other
+# processes' runtime dirs out of reach.
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+LockPersonality=true
+
+# NOTE: the following are intentionally NOT enabled by default because they
+# can break eBPF program loading, /proc inspection of other processes, or
+# writing rules to /etc/opensnitchd/rules. Enable and test on your target
+# before rolling out:
+#   ProtectSystem=strict
+#   ReadWritePaths=/etc/opensnitchd /var/log
+#   ProtectHome=true            # breaks checksums of binaries under /home
+#   CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_RAW CAP_BPF CAP_SYS_ADMIN CAP_DAC_READ_SEARCH
+#   MemoryDenyWriteExecute=true # may break the eBPF/JIT path
 
 [Install]
 WantedBy=multi-user.target

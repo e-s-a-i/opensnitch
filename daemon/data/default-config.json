@@ -1,7 +1,7 @@
 {
     "Server":
     {
-        "Address":"unix:///run/opensnitchd/osui.sock",
+        "Address":"unix:///run/user/1000/opensnitch/osui.sock",
         "Authentication": {
             "Type": "tls-mutual",
             "TLSOptions": {
