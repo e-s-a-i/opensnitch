@@ -3,13 +3,19 @@ package auth
 import (
 	"crypto/tls"
 	"crypto/x509"
+	"fmt"
 	"io/ioutil"
+	"os"
 
 	"github.com/evilsocket/opensnitch/daemon/log"
 	"github.com/evilsocket/opensnitch/daemon/ui/config"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 )
+
+// EnvAllowInsecure lets an operator explicitly opt back into the unauthenticated,
+// unencrypted UI channel. Hardened builds refuse "simple" auth unless this is set.
+const EnvAllowInsecure = "OPENSNITCH_ALLOW_INSECURE_UI"
 
 // client auth types:
 // https://pkg.go.dev/crypto/tls#ClientAuthType
@@ -43,7 +49,12 @@ func New(config *config.Config) (grpc.DialOption, error) {
 	tlsOpts := config.Server.Authentication.TLSOptions
 
 	if credsType == "" || credsType == AuthSimple {
-		log.Debug("UI auth: simple")
+		if os.Getenv(EnvAllowInsecure) != "1" {
+			return nil, fmt.Errorf(
+				"refusing insecure UI authentication (type %q): set Server.Authentication.Type to %q, or export %s=1 to override",
+				AuthSimple, AuthTLSMutual, EnvAllowInsecure)
+		}
+		log.Warning("UI auth: INSECURE (no TLS/authentication), explicitly enabled via %s", EnvAllowInsecure)
 		return grpc.WithInsecure(), nil
 	}
 	certPool := x509.NewCertPool()
