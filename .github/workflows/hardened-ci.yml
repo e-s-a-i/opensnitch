@@ -1,0 +1,67 @@
+# Private hardened-fork CI.
+# Builds and security-checks the daemon on the Debian 13 (trixie) target.
+# Not for upstream; lives only on this fork.
+name: hardened-ci
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-scan:
+    runs-on: ubuntu-latest
+    # Build inside a Debian 13 container so the toolchain, libc and
+    # libnetfilter_queue match the deployment target.
+    container:
+      image: debian:trixie
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build + scan dependencies
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            golang-go gcc pkg-config git ca-certificates \
+            libnetfilter-queue-dev libnfnetlink-dev libmnl-dev \
+            protobuf-compiler
+          # protoc plugins for generating the gRPC stubs
+          go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+          go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
+      - name: Generate protobuf stubs
+        run: make protocol
+
+      - name: Build
+        working-directory: daemon
+        run: go build ./...
+
+      - name: Vet
+        working-directory: daemon
+        run: go vet ./...
+
+      - name: Unit tests
+        working-directory: daemon
+        run: go test ./...
+
+      - name: govulncheck (dependency CVEs)
+        working-directory: daemon
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          govulncheck ./...
+
+      - name: gosec (static analysis)
+        working-directory: daemon
+        run: |
+          go install github.com/securego/gosec/v2/cmd/gosec@latest
+          # Don't fail the build on every finding yet; surface them.
+          gosec -no-fail -fmt=text ./... || true
+
+      - name: Fuzz the DNS response parser (smoke)
+        working-directory: daemon
+        run: go test -run=^$ -fuzz=FuzzTrackAnswers -fuzztime=60s ./dns/
