@@ -29,10 +29,14 @@ jobs:
             golang-go gcc pkg-config git ca-certificates \
             libnetfilter-queue-dev libnfnetlink-dev libmnl-dev \
             protobuf-compiler
-          # protoc plugins for generating the gRPC stubs
-          go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
-          go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+          # protoc plugins, pinned to versions installable with Debian 13's Go
+          # 1.24 (newer ones require Go 1.25). GOTOOLCHAIN=local keeps the build
+          # on the system Go instead of silently fetching another toolchain.
+          export GOTOOLCHAIN=local
+          go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.34.2
+          go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.5.1
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+          echo "GOTOOLCHAIN=local" >> "$GITHUB_ENV"
 
       - name: Generate protobuf stubs
         run: make protocol
