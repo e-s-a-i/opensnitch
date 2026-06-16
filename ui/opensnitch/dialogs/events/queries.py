@@ -105,6 +105,19 @@ class Queries:
         self.reOperators = "=|!=|<>|~|!~|>~|<~|>=|>|<=|<"
         self.reValues=r'[0-9a-zA-Z\.\-_\/:]+'
 
+    @staticmethod
+    def escape_like(text):
+        """Escape a free-text value for safe inclusion inside a single-quoted
+        SQLite string literal.
+
+        The search box accepts arbitrary text, which is interpolated into
+        LIKE '%...%' clauses. Without escaping, a single quote breaks the
+        query (or allows injection into the local stats DB). SQLite escapes a
+        single quote by doubling it; backslashes are literal, so no other
+        escaping is required.
+        """
+        return str(text).replace("'", "''")
+
     def get_completer(self, idx):
         opts = self.options
         if idx == constants.TAB_RULES and self.win.in_detail_view(idx) is False:
@@ -203,6 +216,8 @@ class Queries:
         if text == "":
             return ""
 
+        text = self.escape_like(text)
+
         if idx == constants.TAB_RULES and self.win.rulesTable.isVisible():
             if adv_search is not None:
                 return f" WHERE {adv_search}"
@@ -265,6 +280,7 @@ class Queries:
                 print("IN DETAIL VIEW FILTER, text empty: ", qstr)
                 return
 
+            text = self.escape_like(text)
             qstr += "WHERE %s" % ands.lstrip()
             qstr += f"AND (c.time LIKE '%{text}%' OR " \
                 f"c.action LIKE '%{text}%' OR " \
@@ -315,6 +331,7 @@ class Queries:
             qstr = base_query[0]
 
         else:
+            text = self.escape_like(text)
 
             if indetail_view:
                 if advanced_filter is not None:
@@ -354,6 +371,7 @@ class Queries:
         return qstr
 
     def get_events_generic_filter(self, action, filter_text):
+        filter_text = self.escape_like(filter_text)
         return f" WHERE {action} (" \
                     f" process LIKE '%{filter_text}%'" \
                     f" OR process_args LIKE '%{filter_text}%'" \
@@ -426,7 +444,7 @@ class Queries:
                 what = "WHERE"
             else:
                 what = what + " AND"
-            what = what + f" r.name LIKE '%{filter_text}%'"
+            what = what + f" r.name LIKE '%{self.escape_like(filter_text)}%'"
         q = "SELECT {0} FROM rules as r {1} {2} {3}".format(
             self.win.TABLES[constants.TAB_RULES]['display_fields'],
             what,
